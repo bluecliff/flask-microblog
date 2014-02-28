@@ -14,3 +14,12 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 SQLALCHEMY_DATABASE_URI = 'sqlite:///'+os.path.join(basedir,'app.db')
 #SQLALCHEMY_MIGRATE_REPO = os.path.join(basedir,'db_reposity')
+
+# mial server settings
+MAIL_SERVER = 'localhost'
+MIAL_PORT = 25
+MAIL_USERNAME = None
+MAIL_PASSWORD = None
+
+#administrator list
+ADMINS = ['lijsf@sina.com']
