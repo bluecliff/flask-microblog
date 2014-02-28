@@ -1,35 +1,44 @@
 from flask import render_template,flash,redirect,session,url_for,g,request
 from app import app,db,lm,oid
-from forms import LoginForm,EditForm
+from forms import LoginForm,EditForm,PostForm
 from flask.ext.login import login_user,logout_user,current_user,login_required
-from models import User,ROLE_USER,ROLE_ADMIN
+from models import User,Post,ROLE_USER,ROLE_ADMIN
 from datetime import datetime
 
 @app.before_request
 def befor_request():
     #print current_user,current_user.is_authenticated()
     g.user=current_user
-    if g.user.is_authenticated:
+    if g.user.is_authenticated():
         g.user.last_seen = datetime.utcnow()
         db.session.add(g.user)
         db.session.commit()
 
-@app.route('/')
-@app.route('/index')
+@app.route('/',methods=['GET','POST'])
+@app.route('/index',methods=['GET','POST'])
+@app.route('/index/<int:page>',methods=['POST','GET'])
 @login_required
-def index():
+def index(page=1):
+    form = PostForm()
+    if form.validate_on_submit():
+        post = Post(body=form.post.data,timestamp=datetime.utcnow(),author=g.user)
+        db.session.add(post)
+        db.session.commit()
+        flash('Your post is now live.')
+        return redirect(url_for('index'))
     user = g.user
-    posts = [
-        {
-            'author':{'nickname':'John'},
-            'body':'Beautiful day in Portland!'
-        },
-        {
-            'author': { 'nickname': 'Susan' },
-            'body': 'The Avengers movie was so cool!'
-        }
-    ]
-    return render_template('index.html',user=user,posts=posts)
+    posts = g.user.followed_posts().paginate(page,app.config['POSTS_PER_PAGE'],False)#.items#all()
+    # posts = [
+    #     {
+    #         'author':{'nickname':'John'},
+    #         'body':'Beautiful day in Portland!'
+    #     },
+    #     {
+    #         'author': { 'nickname': 'Susan' },
+    #         'body': 'The Avengers movie was so cool!'
+    #     }
+    # ]
+    return render_template('index.html',title='Home',form=form,posts=posts)
 
 @app.route('/login',methods=['GET','POST'])
 @oid.loginhandler
@@ -43,6 +52,7 @@ def login():
         #flash('Login requested for OpenID="' + form.openid.data+'",remember me ='+str(form.remember_me.data))
         #return redirect('/index')
     return render_template('login.html',title='Sign In',form=form,providers=app.config['OPENID_PROVIDERS'])
+
 @oid.after_login
 def after_login(resp):
     if resp.email is None or resp.email=="":
@@ -57,12 +67,16 @@ def after_login(resp):
         user = User(nickname=nickname,email=resp.email,role=ROLE_USER)
         db.session.add(user)
         db.session.commit()
+
+        db.session.add(user.follow(user))
+        db.session.commit()
     remember_me = False
     if 'remember_me' in session:
         remember_me=session['remember_me']
         session.pop('remember_me',None)
     login_user(user,remember=remember_me)
     return redirect(request.args.get('next') or url_for('index'))
+
 @lm.user_loader
 def load_user(id):
     return User.query.get(int(id))
@@ -73,16 +87,18 @@ def logout():
     return redirect(url_for('index'))
 
 @app.route('/profile/<nickname>')
+@app.route('/profile/<nickname>/<int:page>')
 @login_required
-def profile(nickname):
+def profile(nickname,page=1):
     user = User.query.filter_by(nickname = nickname).first()
     if user == None:
         flash('User '+nickname + ' not found')
         return redirect(url_for('index'))
-    posts = [
-        {'author':user, 'body':'Test post 1'},
-        {'author':user, 'body':'Test post 2'},
-    ]
+    posts = user.posts.paginate(page,app.config['POSTS_PER_PAGE'],False)
+    # posts = [
+    #     {'author':user, 'body':'Test post 1'},
+    #     {'author':user, 'body':'Test post 2'},
+    # ]
     return render_template('user.html',user=user,posts=posts)
 
 @app.route('/edit',methods=['GET','POST'])
@@ -109,3 +125,41 @@ def not_found_error(error):
 def internal_error(error):
     db.session.rollback()
     return render_template('500.html'),500
+
+@app.route('/follow/<nickname>')
+@login_required
+def follow(nickname):
+    user = User.query.filter_by(nickname=nickname).first()
+    if user == None:
+        flash('User '+nickname + ' not found')
+        return redirect(url_for('index'))
+    if user == g.user:
+        flash("You can\'t follow yourself!")
+        return redirect(url_for('profile',nickname=nickname))
+    u = g.user.follow(user)
+    if u is None:
+        flash('Can not follow '+nickname+'.')
+        return redirect(url_for('profile',nickname=nickname))
+    db.session.add(u)
+    db.session.commit()
+    flash('You are now following '+nickname+'.')
+    return redirect(url_for('profile',nickname=nickname))
+
+@app.route('/unfollow/<nickname>')
+@login_required
+def unfollow(nickname):
+    user = User.query.filter_by(nickname=nickname).first()
+    if user == None:
+        flash("User "+nickname+' not found!')
+        return redirect(url_for('index'))
+    if user == g.user:
+        flash('You can\'t unfollow your self!')
+        return redirect(url_for('profile',nickname=nickname))
+    u = g.user.unfollow(user)
+    if u is None:
+        flash('Can not unfollow '+nickname+'.')
+        return redirect(url_for('profile',nickname=nickname))
+    db.session.add(u)
+    db.session.commit()
+    flash('You hace stop following '+nickname+'.')
+    return redirect(url_for('profile',nickname=nickname))

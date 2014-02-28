@@ -3,10 +3,39 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1>Hi, {{user.nickname}}!</h1>
-{% for post in posts %}
-<p>
-  {{post.author.nickname}} says: <b>{{post.body}}</b>
-</p>
+<h1>Hi, {{g.user.nickname}}!</h1>
+<form action="" method="post" name="post">
+    {{form.hidden_tag()}}
+    <table>
+        <tr>
+            <td>Say something:</td>
+            <td>{{ form.post(size=30,maxlenth=1024) }}</td>
+            <td>
+                {% for error in form.errors.post %}
+                <span style="color:red;">[{{error}}]</span>
+                {% endfor %}
+            </td>
+        </tr>
+        <tr>
+            <td></td>
+            <td><input type="submit" value="Post"></td>
+        </tr>
+    </table>
+</form>
+{% for post in posts.items %}
+    {% include 'post.html' %}
 {% endfor %}
+{% if posts.has_prev %}
+    <a href="{{ url_for('index',page=posts.prev_num) }}"> << Newer Posts</a>
+{% else %}
+    << Newer Posts
+{% endif %}|
+{% if posts.has_next %}
+    <a href="{{ url_for('index',page=posts.next_num) }}">
+    Older Posts >>
+    </a>
+{% else %}
+    Older Posts >>
+{% endif %}
+
 {% endblock %}
