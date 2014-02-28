@@ -17,7 +17,6 @@ db.init_app(app)
 
 migrate = Migrate(app,db)
 manager = Manager(app)
-
 lm = LoginManager()
 lm.init_app(app)
 lm.login_view='login'
